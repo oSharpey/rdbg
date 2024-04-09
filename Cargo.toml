@@ -1,0 +1,13 @@
+[package]
+name = "debugger"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+linenoise-rust = "=0.2.1"
+nix = { version = "0.28.0", features = ["ptrace", "personality"] }
+capstone = "=0.6.0"
+object = "0.34.0"
+iced-x86 = "1.21.0"
