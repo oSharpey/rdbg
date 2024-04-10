@@ -19,6 +19,9 @@ use std::io::Read;
 use std::os::unix::process::CommandExt;
 use std::process::{exit, Command};
 
+
+// Why does rust not have libc constants for these?
+// It angers me
 const SI_KERNEL: c_int = 128;
 const TRAP_BRKPT: c_int = 1;
 const TRAP_TRACE: c_int = 2;
@@ -50,7 +53,7 @@ impl Debugger {
     }
 
     fn print_stack_frame(&self) {
-        // prints the current stack frame
+        // prints the current stack frame (rbp to rsp)
         let regs = ptrace::getregs(self.target_pid).unwrap();
         let rbp = regs.rbp;
         let rsp = regs.rsp;
@@ -83,6 +86,8 @@ impl Debugger {
 
     fn write_memory(&self, addr: u64, value: u64) {
         let try_write = || -> Result<(), nix::Error> {
+            
+            // This feels dangerous but lets go with it
             unsafe {
                 ptrace::write(self.target_pid, addr as *mut c_void, value as *mut c_void)?;
             }
@@ -102,7 +107,8 @@ impl Debugger {
     }
 
     fn step_over_bp(&mut self) {
-        let bp_addr = get_rip(self.target_pid) - 1;
+        // let bp_addr = get_rip(self.target_pid) - 1;
+        let bp_addr = ptrace::getregs(self.target_pid).unwrap().rip - 1;
         if let Some(bp) = self.bps.get_mut(&bp_addr) {
             if bp.enabled {
                 set_rip(self.target_pid, bp_addr);
@@ -120,7 +126,8 @@ impl Debugger {
     }
 
     fn step_with_bp_check(&mut self) {
-        let bp_addr = get_rip(self.target_pid) - 1;
+        //let bp_addr = get_rip(self.target_pid) - 1;
+        let bp_addr = ptrace::getregs(self.target_pid).unwrap().rip - 1;
         if self.bps.contains_key(&bp_addr) {
             self.step_over_bp();
         } else {
@@ -229,7 +236,43 @@ impl Debugger {
                 exit(0);
             }
             "help" | "h" => {
-                println!("\nCommands:\n     continue (c) - continue execution\n     break (b) <addr> - set breakpoint\n     quit (q) - quit debugger\n");
+                println!(" 
+COMMANDS
+       continue (c)
+           Continue execution.
+
+       break (b) <addr>
+           Set breakpoint.
+
+       register (r)
+           read <register>
+               Read register.
+           write <register> <value>
+               Write register.
+           dump
+               Dump all registers.
+
+       memory (m)
+           read <addr>
+               Read memory at address.
+           write <addr> <value>
+               Write memory at address.
+
+       stepi (si)
+           Step one instruction.
+
+       stack (st)
+           Print current stack frame.
+
+       disas (d)
+           Disassemble 10 instructions from current instruction pointer.
+
+       quit (q)
+           Quit debugger.
+
+       help (h)
+           Print this help menu.
+");
             }
             _ => {
                 println!("Unknown command");
@@ -237,6 +280,26 @@ impl Debugger {
         }
     }
 }
+
+// Commands:
+//      continure (c) - continue execution
+//      break (b) <addr> - set breakpoint
+//      
+//      register (r):
+//              read <register> - read register
+//              write <register> <value> - write register
+//              dump - dump all registers
+//
+//      memory (m):
+//              read <address> - read memory at address
+//              write <address> <value> - write memory at address
+//
+//      stepi (si) - step one instruction
+//      stack (st) - print current stack frame
+//      disas (d) - disassemble 10 instructions from current instruction pointer
+//      quit (q) - quit debugger
+//      help (h) - print help
+//
 
 #[derive(Debug)]
 struct Breakpoint {
@@ -303,6 +366,9 @@ fn run_child(proc_name: &str) {
 }
 
 fn get_reg_by_name(reg_name: &str, pid: Pid) -> u64 {
+   
+    // There has to be a better way to do this. Probably could do some pointer arithmetic but
+    // unsafe is not the rust wayyyy!!!
     let regs = ptrace::getregs(pid).unwrap();
     match reg_name {
         "rax" => regs.rax,
@@ -376,10 +442,10 @@ fn dump_regs(pid: Pid) {
     println!("-------------------------------------\n");
 }
 
-fn get_rip(pid: Pid) -> u64 {
-    let regs = ptrace::getregs(pid).unwrap();
-    regs.rip
-}
+//fn get_rip(pid: Pid) -> u64 {
+//    let regs = ptrace::getregs(pid).unwrap();
+//    regs.rip
+//}
 
 fn set_rip(pid: Pid, value: u64) {
     let mut regs = ptrace::getregs(pid).unwrap();
@@ -445,7 +511,8 @@ fn disassemble(pid: Pid) {
     let target_name = env::args().nth(1).unwrap();
     let mut target_bytes = fs::File::open(&target_name).unwrap();
     let mut buff: Vec<u8> = Vec::new();
-    let rip = get_rip(pid);
+    //let rip = get_rip(pid);
+    let rip = ptrace::getregs(pid).unwrap().rip - 1;
 
     let _ = target_bytes.read_to_end(&mut buff);
 

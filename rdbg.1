@@ -1,0 +1,56 @@
+RDBG(1)                  User Commands                 RDBG(1)
+
+NAME
+       rdbg - Rust Mini Debugger
+
+SYNOPSIS
+       rdgb [OPTIONS] [PROGRAM]
+
+DESCRIPTION
+       A mini debugger written in rust for a university project.
+
+COMMANDS
+       continue (c)
+           Continue execution.
+
+       break (b) <addr>
+           Set breakpoint.
+
+       register (r)
+           read <register>
+               Read register.
+           write <register> <value>
+               Write register.
+           dump
+               Dump all registers.
+
+       memory (m)
+           read <address>
+               Read memory at address.
+           write <address> <value>
+               Write memory at address.
+
+       stepi (si)
+           Step one instruction.
+
+       stack (st)
+           Print current stack frame.
+
+       disas (d)
+           Disassemble 10 instructions from current instruction pointer.
+
+       quit (q)
+           Quit debugger.
+
+       help (h)
+           Print this help menu.
+
+OPTIONS
+       -h, --help
+           Show this help message and exit.
+
+AUTHOR
+       Written by Oscar Sharpe
+
+
+RDBG(1)                  User Commands                 RDBG(1)
