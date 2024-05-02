@@ -20,18 +20,16 @@ impl Breakpoint {
     }
 
     pub fn enable(&mut self) {
-        // Some error handling here incase the address cannot be read to set breakpoint
-        let try_read = || -> Result<u64, nix::Error> {
-            let value = ptrace::read(self.target_pid, self.b_addr as *mut c_void)?;
-            Ok(value as u64)
+        // Some error handling here incase the address cannot be read to set breakpoint     
+        let value_result = ptrace::read(self.target_pid, self.b_addr as *mut c_void);
+        let value = match value_result {
+            Ok(value) => value as u64,
+            Err(e) => {
+                println!("Failed to read memory at address 0x{:x}: {}", self.b_addr, e);
+                return;
+            }
         };
 
-        if let Err(_) = try_read() {
-            println!("Failed to read memory at address 0x{:x}", self.b_addr);
-            return;
-        }
-
-        let value = try_read().unwrap();
         self.saved_data = value;
         let bp = (value & (u64::MAX ^ 0xff)) | 0xcc;
 
