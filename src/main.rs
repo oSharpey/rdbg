@@ -11,7 +11,6 @@ extern crate capstone;
 extern crate linenoise;
 extern crate nix;
 
-
 // Nix crate provivdes safer alternatives to libc, and is used for system calls like ptrace, fork
 // and wait
 

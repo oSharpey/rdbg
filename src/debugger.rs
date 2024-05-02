@@ -71,9 +71,10 @@ impl Debugger {
         println!("Memory at address 0x{:x}: 0x{:x}", addr, read_mem);
     }
 
-    fn write_memory(&self, addr: u64, value: u64) { 
+    fn write_memory(&self, addr: u64, value: u64) {
         unsafe {
-            let write_result = ptrace::write(self.target_pid, addr as *mut c_void, value as *mut c_void);
+            let write_result =
+                ptrace::write(self.target_pid, addr as *mut c_void, value as *mut c_void);
             let _ = match write_result {
                 Ok(_) => value,
                 Err(_) => {
@@ -136,7 +137,7 @@ impl Debugger {
                 if cmd.len() < 2 {
                     println!("Usage: break(b) <addr>");
                     return;
-                }         
+                }
                 println!("Break");
                 let raw_addr = cmd[1].trim_start_matches("0x");
                 let addr_result = u64::from_str_radix(raw_addr, 16);
@@ -174,7 +175,6 @@ impl Debugger {
                 if cmd[1] == "dump" {
                     dump_regs(self.target_pid);
                 } else if cmd[1] == "read" {
-
                     if cmd.len() < 3 {
                         println!("Usage: register(r) read <register>");
                         return;
@@ -256,16 +256,15 @@ impl Debugger {
 
             "quit" | "q" => {
                 println!("Quit");
-
                 // handle the error if the process is already dead from continue
-                let try_kill = || -> Result<(), nix::Error> {
-                    ptrace::kill(self.target_pid)?;
-                    Ok(())
-                };
-
-                if let Err(_) = try_kill() {
-                    println!();
+                let try_kill = ptrace::kill(self.target_pid);
+                match try_kill {
+                    Ok(_) => {}
+                    Err(_) => {
+                        println!();
+                    }
                 }
+
                 exit(0);
             }
             "help" | "h" => {

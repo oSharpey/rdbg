@@ -20,7 +20,6 @@ pub fn disassemble(pid: Pid) {
     let elf = object::File::parse(&buff[..]).unwrap();
     let text_section = elf.section_by_name(".text").unwrap();
     let text_bytes = text_section.data().unwrap();
-    
 
     // Uses capstone as the disassembler, lightweight an relatively easy to use. Used a lot in the
     // malware analysis and reverse engineering community

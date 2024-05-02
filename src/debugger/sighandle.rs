@@ -9,7 +9,6 @@ const TRAP_BRKPT: c_int = 1;
 const TRAP_TRACE: c_int = 2;
 
 pub fn get_proc_status() {
-    
     // Gets the status of the child proccess so stopping can be handled (SIGTRAP for breakpoints
     // and stepping, SIGSEGV for segfaults)
 
@@ -44,7 +43,6 @@ pub fn get_proc_status() {
         }
     }
 }
-
 
 // Handles different ways SIGTRAP is hit, either by the kernel (SI_KERNEL), by a breakpoint (TRAP_BRKPT) or by stepping (TRAP_TRACE)
 fn handle_sigtrap(pid: Pid, siginfo: siginfo_t) {

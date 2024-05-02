@@ -3,7 +3,7 @@ use nix::unistd::Pid;
 
 // Pretty self expanitory module, used for getting and setting registers
 
-pub fn get_reg_by_name(reg_name: &str, pid: Pid) -> u64 { 
+pub fn get_reg_by_name(reg_name: &str, pid: Pid) -> u64 {
     let regs = ptrace::getregs(pid).unwrap();
     match reg_name {
         "rax" => regs.rax,
