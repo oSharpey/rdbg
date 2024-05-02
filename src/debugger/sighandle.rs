@@ -8,7 +8,11 @@ const SI_KERNEL: c_int = 128;
 const TRAP_BRKPT: c_int = 1;
 const TRAP_TRACE: c_int = 2;
 
-pub fn wait_for_signal() {
+pub fn get_proc_status() {
+    
+    // Gets the status of the child proccess so stopping can be handled (SIGTRAP for breakpoints
+    // and stepping, SIGSEGV for segfaults)
+
     match wait() {
         Ok(status) => {
             match status {
@@ -41,6 +45,8 @@ pub fn wait_for_signal() {
     }
 }
 
+
+// Handles different ways SIGTRAP is hit, either by the kernel (SI_KERNEL), by a breakpoint (TRAP_BRKPT) or by stepping (TRAP_TRACE)
 fn handle_sigtrap(pid: Pid, siginfo: siginfo_t) {
     let mut regs = ptrace::getregs(pid).unwrap();
     match siginfo.si_code {

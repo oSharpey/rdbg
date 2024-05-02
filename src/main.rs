@@ -1,6 +1,19 @@
+/*
+RDBG - a simple debugger written in Rust
+Structure of the project has been helped by the following resources:
+    https://blog.tartanllama.xyz/writing-a-linux-debugger-setup/
+    https://carstein.github.io/2022/05/29/rust-system-programming-2.html
+    https://carstein.github.io/2022/09/11/rust-system-programming-3.html
+    https://medium.com/@lizrice/a-debugger-from-scratch-part-1-7f55417bc85f
+*/
+
 extern crate capstone;
 extern crate linenoise;
 extern crate nix;
+
+
+// Nix crate provivdes safer alternatives to libc, and is used for system calls like ptrace, fork
+// and wait
 
 use nix::libc::personality;
 use nix::sys::ptrace;
@@ -12,6 +25,8 @@ use std::process::{exit, Command};
 
 use crate::debugger::Debugger;
 mod debugger;
+
+const NO_ASLR: u64 = 0x0040000;
 
 fn run_child(proc_name: &str) {
     // let the process be ptraced
@@ -49,8 +64,8 @@ $$ |      $$$$$$$$\\$$$$$$  |\$$$$$$  |      $$ |  $$ |$$$$$$$  |$$$$$$$  |\$$$$
 
     match unsafe { fork() } {
         Ok(ForkResult::Child) => {
-            let no_aslr: u64 = 0x0040000;
-            unsafe { personality(no_aslr) };
+            // Disabling ASLR makes it easier to test with setting breakpoints
+            unsafe { personality(NO_ASLR) };
             run_child(&target_name);
         }
         Ok(ForkResult::Parent { child }) => {

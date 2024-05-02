@@ -20,6 +20,7 @@ impl Breakpoint {
     }
 
     pub fn enable(&mut self) {
+        // Some error handling here incase the address cannot be read to set breakpoint
         let try_read = || -> Result<u64, nix::Error> {
             let value = ptrace::read(self.target_pid, self.b_addr as *mut c_void)?;
             Ok(value as u64)

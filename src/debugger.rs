@@ -7,7 +7,7 @@ use std::process::exit;
 use crate::debugger::asm::disassemble;
 use crate::debugger::breakpoint::Breakpoint;
 use crate::debugger::registers::{dump_regs, get_reg_by_name, set_register_by_name, set_rip};
-use crate::debugger::sighandle::wait_for_signal;
+use crate::debugger::sighandle::get_proc_status;
 
 mod asm;
 mod breakpoint;
@@ -22,13 +22,15 @@ impl Debugger {
     pub fn new(pid: Pid) -> Debugger {
         Debugger {
             target_pid: pid,
+            // Hashmap to store breakpoints, used for faster lookup of breakpoints
             bps: HashMap::new(),
         }
     }
 
     pub fn run(&mut self) {
-        wait_for_signal();
+        get_proc_status();
         loop {
+            // Linenoise used for user input handling
             let line = linenoise::input("rdbg> ");
             match line {
                 None => break,
@@ -58,31 +60,27 @@ impl Debugger {
     }
 
     fn read_memory(&self, addr: u64) {
-        let try_read = || -> Result<u64, nix::Error> {
-            let value = ptrace::read(self.target_pid, addr as *mut c_void)?;
-            Ok(value as u64)
+        let read_result = ptrace::read(self.target_pid, addr as *mut c_void);
+        let read_mem = match read_result {
+            Ok(value) => value as u64,
+            Err(_) => {
+                println!("Failed to read memory at address 0x{:x}", addr);
+                return;
+            }
         };
-
-        if let Err(_) = try_read() {
-            println!("Failed to read memory at address 0x{:x}", addr);
-            return;
-        }
-
-        let value = try_read().unwrap();
-        println!("Memory at address 0x{:x}: 0x{:x}", addr, value);
+        println!("Memory at address 0x{:x}: 0x{:x}", addr, read_mem);
     }
 
-    fn write_memory(&self, addr: u64, value: u64) {
-        let try_write = || -> Result<(), nix::Error> {
-            // This feels dangerous but lets go with it
-            unsafe {
-                ptrace::write(self.target_pid, addr as *mut c_void, value as *mut c_void)?;
-            }
-            Ok(())
-        };
-        if let Err(_) = try_write() {
-            println!("Failed to write memory at address 0x{:x}", addr);
-            return;
+    fn write_memory(&self, addr: u64, value: u64) { 
+        unsafe {
+            let write_result = ptrace::write(self.target_pid, addr as *mut c_void, value as *mut c_void);
+            let _ = match write_result {
+                Ok(_) => value,
+                Err(_) => {
+                    println!("Failed to write memory at address 0x{:x}", addr);
+                    return;
+                }
+            };
         }
         println!("Memory at address 0x{:x} set to 0x{:x}", addr, value);
     }
@@ -94,14 +92,14 @@ impl Debugger {
     }
 
     fn step_over_bp(&mut self) {
-        // let bp_addr = get_rip(self.target_pid) - 1;
+        // have to take 1 off the rip to get the correct address
         let bp_addr = ptrace::getregs(self.target_pid).unwrap().rip - 1;
         if let Some(bp) = self.bps.get_mut(&bp_addr) {
             if bp.enabled {
                 set_rip(self.target_pid, bp_addr);
                 bp.disable();
                 ptrace::step(self.target_pid, None).unwrap();
-                wait_for_signal();
+                get_proc_status();
                 bp.enable();
             }
         }
@@ -109,11 +107,10 @@ impl Debugger {
 
     fn single_step(&self) {
         ptrace::step(self.target_pid, None).unwrap();
-        wait_for_signal();
+        get_proc_status();
     }
 
     fn step_with_bp_check(&mut self) {
-        //let bp_addr = get_rip(self.target_pid) - 1;
         let bp_addr = ptrace::getregs(self.target_pid).unwrap().rip - 1;
         if self.bps.contains_key(&bp_addr) {
             self.step_over_bp();
@@ -133,18 +130,37 @@ impl Debugger {
                 println!("Continue");
                 self.step_over_bp();
                 ptrace::cont(self.target_pid, None).unwrap();
-                wait_for_signal();
+                get_proc_status();
             }
             "break" | "b" => {
+                if cmd.len() < 2 {
+                    println!("Usage: break(b) <addr>");
+                    return;
+                }         
                 println!("Break");
                 let raw_addr = cmd[1].trim_start_matches("0x");
-                let addr = u64::from_str_radix(raw_addr, 16).unwrap();
+                let addr_result = u64::from_str_radix(raw_addr, 16);
+                let addr = match addr_result {
+                    Ok(value) => value,
+                    Err(_) => {
+                        println!("Invalid address");
+                        return;
+                    }
+                };
+
                 self.set_breakpoint(addr);
             }
             "bd" => {
                 println!("Delete breakpoint");
                 let raw_addr = cmd[1].trim_start_matches("0x");
-                let addr = u64::from_str_radix(raw_addr, 16).unwrap();
+                let addr_result = u64::from_str_radix(raw_addr, 16);
+                let addr = match addr_result {
+                    Ok(value) => value,
+                    Err(_) => {
+                        println!("Invalid address");
+                        return;
+                    }
+                };
                 if let Some(bp) = self.bps.get_mut(&addr) {
                     bp.disable();
                     self.bps.remove(&addr);
@@ -158,36 +174,66 @@ impl Debugger {
                 if cmd[1] == "dump" {
                     dump_regs(self.target_pid);
                 } else if cmd[1] == "read" {
+
+                    if cmd.len() < 3 {
+                        println!("Usage: register(r) read <register>");
+                        return;
+                    }
                     println!(
                         "{:?}: 0x{:x}",
                         cmd[2],
                         get_reg_by_name(cmd[2], self.target_pid)
                     );
                 } else if cmd[1] == "write" {
+                    if cmd.len() < 4 {
+                        println!("Usage: register(r) write <register> <value>");
+                        return;
+                    }
                     let raw_value = cmd[3].trim_start_matches("0x");
-                    let value = u64::from_str_radix(raw_value, 16).unwrap();
+                    let value_result = u64::from_str_radix(raw_value, 16);
+                    let value = match value_result {
+                        Ok(value) => value,
+                        Err(_) => {
+                            println!("Invalid value");
+                            return;
+                        }
+                    };
                     set_register_by_name(cmd[2], value, self.target_pid);
                 } else {
                     println!("Usage: register(r) read/wrtie <register> OR register(r) dump");
                 }
             }
             "memory" | "m" => {
-                if cmd.len() < 2 {
+                if cmd.len() < 3 {
                     println!(
                         "Usage: memory(m) read <address> OR memory(m) write <address> <value>"
                     );
                     return;
                 }
-                //being very dumb here with assuming the correct address format
+                // assuming the correct address format here
                 let raw_addr = cmd[2].trim_start_matches("0x");
-                let addr = u64::from_str_radix(raw_addr, 16).unwrap();
+                let addr_result = u64::from_str_radix(raw_addr, 16);
+                let addr = match addr_result {
+                    Ok(value) => value,
+                    Err(_) => {
+                        println!("Invalid address");
+                        return;
+                    }
+                };
 
                 if cmd[1] == "read" {
                     // Read memory from an address,
                     self.read_memory(addr);
                 } else if cmd[1] == "write" {
                     let raw_value = cmd[3].trim_start_matches("0x");
-                    let value = u64::from_str_radix(raw_value, 16).unwrap();
+                    let value_result = u64::from_str_radix(raw_value, 16);
+                    let value = match value_result {
+                        Ok(value) => value,
+                        Err(_) => {
+                            println!("Invalid value");
+                            return;
+                        }
+                    };
                     self.write_memory(addr, value);
                 } else {
                     println!(

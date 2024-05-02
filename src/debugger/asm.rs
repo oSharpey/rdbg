@@ -12,15 +12,18 @@ pub fn disassemble(pid: Pid) {
     let target_name = env::args().nth(1).unwrap();
     let mut target_bytes = fs::File::open(&target_name).unwrap();
     let mut buff: Vec<u8> = Vec::new();
-    //let rip = get_rip(pid);
     let rip = ptrace::getregs(pid).unwrap().rip - 1;
 
     let _ = target_bytes.read_to_end(&mut buff);
 
+    // parse the elf file and get the .text section
     let elf = object::File::parse(&buff[..]).unwrap();
     let text_section = elf.section_by_name(".text").unwrap();
     let text_bytes = text_section.data().unwrap();
+    
 
+    // Uses capstone as the disassembler, lightweight an relatively easy to use. Used a lot in the
+    // malware analysis and reverse engineering community
     let cs = Capstone::new()
         .x86()
         .mode(arch::x86::ArchMode::Mode64)
@@ -31,6 +34,8 @@ pub fn disassemble(pid: Pid) {
 
     let text_start = text_section.address();
     let asm = cs.disasm_all(&text_bytes, text_start).unwrap();
+    // start_index is the the address of the instruction at the current rip, used otherwise it'll
+    // start the disassembly from the beginning of the .text section
     let start_index = asm.iter().position(|i| i.address() >= rip).unwrap_or(0);
 
     println!("\n--------------- Disassembly ---------------");

@@ -1,9 +1,9 @@
 use nix::sys::ptrace;
 use nix::unistd::Pid;
 
-pub fn get_reg_by_name(reg_name: &str, pid: Pid) -> u64 {
-    // There has to be a better way to do this. Probably could do some pointer arithmetic but
-    // unsafe is not the rust wayyyy!!!
+// Pretty self expanitory module, used for getting and setting registers
+
+pub fn get_reg_by_name(reg_name: &str, pid: Pid) -> u64 { 
     let regs = ptrace::getregs(pid).unwrap();
     match reg_name {
         "rax" => regs.rax,
@@ -76,11 +76,6 @@ pub fn dump_regs(pid: Pid) {
     println!("R15: 0x{:x} \nFLAGS: 0x{:x}", regs.r15, regs.eflags);
     println!("-------------------------------------\n");
 }
-
-//fn get_rip(pid: Pid) -> u64 {
-//    let regs = ptrace::getregs(pid).unwrap();
-//    regs.rip
-//}
 
 pub fn set_rip(pid: Pid, value: u64) {
     let mut regs = ptrace::getregs(pid).unwrap();
